@@ -11,6 +11,7 @@
 #include <stdlib.h>
 #include <fstream>
 #include <assert.h>
+#include <chrono>
 
 #include "CL/cl.h"
 using namespace cv;
@@ -77,10 +78,10 @@ Java_com_cloudream_myapplication_MainActivity_stringFromJNI(
         }
     }
 
-    const int widthA = 640;
-    const int heightA = 640;
-    const int widthB = 640;
-    const int heightB = 640;
+    const int widthA = 1280;
+    const int heightA = 720;
+    const int widthB = 720;
+    const int heightB = 1280;
     const int widthC = widthB;
     const int heightC = heightA;
 
@@ -130,7 +131,8 @@ Java_com_cloudream_myapplication_MainActivity_stringFromJNI(
     }
 
     clock_t start, end;
-    start = clock();
+    auto t1 = std::chrono::high_resolution_clock::now();
+
     for (int i = 0; i < heightA; i++)
     {
         for (int j = 0; j < widthB; j++)
@@ -142,10 +144,12 @@ Java_com_cloudream_myapplication_MainActivity_stringFromJNI(
             }
         }
     }
-    end = clock();
-    std::string during2 = std::to_string((double) (end - start) / CLOCKS_PER_SEC);
+    auto t2 = std::chrono::high_resolution_clock::now();
+    auto dur = std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count();
+    std::string during2 = std::to_string(dur);
     float *D = (float*) malloc(dataSizeC);
     memcpy(D, C, dataSizeC);
+    memset(C, 0, dataSizeC);
 
 
 
@@ -182,8 +186,8 @@ Java_com_cloudream_myapplication_MainActivity_stringFromJNI(
     if (ciErrNum != CL_SUCCESS){
         printf("function clCreateCommandQueue goes wrong");
     }
-    start = clock();
     //declare the buffer and transimit it
+    t1 = std::chrono::high_resolution_clock::now();
     cl_mem bufferA = clCreateBuffer(ctx, CL_MEM_READ_ONLY, dataSizeA, NULL, &ciErrNum);
     if (ciErrNum == CL_SUCCESS){
         printf("buffer A created successfully!\n");
@@ -191,7 +195,10 @@ Java_com_cloudream_myapplication_MainActivity_stringFromJNI(
 
 
     ciErrNum = clEnqueueWriteBuffer(myqueue, bufferA, CL_FALSE, 0, dataSizeA, (void *)A, 0, NULL, NULL);
-    end = clock();
+    t2 = std::chrono::high_resolution_clock::now();
+    dur = std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count();
+    std::string during = std::to_string(dur);
+
     if (ciErrNum == CL_SUCCESS){
         printf("bufferA has transformed successfully!\n");
     }
@@ -276,9 +283,15 @@ Java_com_cloudream_myapplication_MainActivity_stringFromJNI(
     size_t globalws[2] = { widthC, heightC};
 
     //execute the kernel
-
+    clock_t st, en;
+    st = clock();
     ciErrNum = clEnqueueNDRangeKernel(myqueue, mykernel, 2, NULL, globalws, NULL, 0, NULL, NULL);
     clFinish(myqueue);
+    t2 = std::chrono::high_resolution_clock::now();
+    en = clock();
+
+
+
 
     if (ciErrNum == CL_SUCCESS){
         printf("execute the kernel successfully!\n");
@@ -289,9 +302,9 @@ Java_com_cloudream_myapplication_MainActivity_stringFromJNI(
     }
     //Read the output
 
+
     ciErrNum = clEnqueueReadBuffer(myqueue, bufferC, CL_TRUE, 0, dataSizeC, (void *)C, 0, NULL, NULL);
 
-    std::string during = std::to_string((double)(end - start) / CLOCKS_PER_SEC);
 
     std::string result = "true";
     for(int i = 0; i < widthC * heightC; i++)
