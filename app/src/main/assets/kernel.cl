@@ -1,18 +1,20 @@
 __kernel void simpleMultiply(
-    __global float* outputC,
-    int widthA,
-    int heightA,
-    int widthB,
-    int heightB,
-    __global float* inputA,
-    __global float* inputB)
+    __global uchar* dest_data,
+    __global uchar* src_data,
+    int width,
+    int height,
+    int channel,
+    float cosThreta,
+    float sinThreta)
 {
-    int row = get_global_id(1);
-    int col = get_global_id(0);
-    float sum = 0.0f;
-    for(int i = 0; i < widthA; i++)
-    {
-        sum += inputA[row * widthA + i] * inputB[i * widthB + col];
-    }
-    outputC[row * widthB + col] = sum;
+  const int ix = get_global_id(0);
+  const int iy = get_global_id(1);
+
+  int xpos = ((float)(ix - width / 2)) * cosThreta + ((float)(-iy + height / 2)) * sinThreta + width / 2;
+  int ypos = ((float)(ix - width / 2)) * sinThreta + ((float)(iy - height / 2)) * cosThreta + height / 2;
+
+  if((xpos >= 0) && (xpos < width) && (ypos >= 0) && (ypos <= height))
+  {
+    dest_data[ypos * width + xpos] = src_data[iy * width + ix];
+  }
 }

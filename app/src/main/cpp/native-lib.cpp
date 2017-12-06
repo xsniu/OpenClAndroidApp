@@ -17,14 +17,16 @@
 using namespace cv;
 
 std::string programSource;
-
+cv::Mat img;
+std::string path;
 extern "C"
 JNIEXPORT jint
 JNICALL
 Java_com_cloudream_myapplication_MainActivity_OpenFile(
         JNIEnv *env,
         jobject /* this */,
-        jobject assetManager ) {
+        jobject assetManager,
+        jstring fileUrl) {
 
     AAssetManager* mgr = AAssetManager_fromJava(env, assetManager );
     AAsset* asset = AAssetManager_open(mgr, "kernel.cl", AASSET_MODE_UNKNOWN);
@@ -34,6 +36,12 @@ Java_com_cloudream_myapplication_MainActivity_OpenFile(
     programSource.resize(length);
     memcpy(&programSource[0], AAsset_getBuffer(asset), length);
     AAsset_close(asset);
+
+    jboolean iscopy = false;
+    const char* url = env->GetStringUTFChars(fileUrl, &iscopy);
+    path = std::string(url);
+    img = cv::imread((path + "/OpenCL/01.png").c_str());
+    env->ReleaseStringUTFChars(fileUrl, url);
     return 0;
 
 }
@@ -67,91 +75,34 @@ Java_com_cloudream_myapplication_MainActivity_stringFromJNI(
         JNIEnv *env,
         jobject /* this */) {
 
-    std::ofstream out("./out.txt");
-
-    int len = strlen(programSrc);
-    auto size = programSource.size();
-    for (int i = 0; i < programSource.size(); ++i) {
-        if (programSource[i] != programSrc[i])
-        {
-            printf("hello world");
-        }
-    }
-
-    const int widthA = 1280;
-    const int heightA = 720;
-    const int widthB = 720;
-    const int heightB = 1280;
-    const int widthC = widthB;
-    const int heightC = heightA;
-
-    float *A = NULL;
-    float *B = NULL;
-    float *C = NULL;
+    cv::Mat ImgGray;
+    cv::cvtColor(img, ImgGray, CV_BGRA2GRAY);
+    const int width = img.cols;
+    const int height = img.rows;
+    const int channel = img.channels();
+    float theta = 45 *  M_PI / 180;
+    auto dataSize = ImgGray.total();
 
 
-    size_t dataSizeA = sizeof(float) * widthA * heightA;
-    size_t dataSizeB = sizeof(float) * widthB * heightB;
-    size_t dataSizeC = sizeof(float) * heightA * widthB;
+    uchar *bufIn = (uchar*)malloc(dataSize);
+    uchar *bufOut = (uchar*)malloc(dataSize);
 
-    A = (float *)malloc(dataSizeA);
-    B = (float *)malloc(dataSizeB);
-    C = (float*)malloc(dataSizeC);
-
-    for (int i = 0; i < widthA *heightA; ++i)
-    {
-        if (i % 3 == 0)
-        {
-            A[i] = 2.5f;
-        }
-        else if (i % 3 == 1)
-        {
-            A[i] = 1.5f;
-        }
-        else
-        {
-            A[i] = 2.0f;
-        }
-    }
-
-    for (int i = 0; i < widthB * heightB; ++i) {
-        if (i % 3 == 0)
-        {
-            B[i] = 2.5f;
-        }
-        else if (i % 3 == 1)
-        {
-            B[i] = 1.5f;
-        }
-        else
-        {
-            B[i] = 2.0f;
-        }
-
-    }
-
-    clock_t start, end;
-    auto t1 = std::chrono::high_resolution_clock::now();
-
-    for (int i = 0; i < heightA; i++)
-    {
-        for (int j = 0; j < widthB; j++)
-        {
-            C[i * widthB + j] = 0;
-            for (int k = 0; k < widthA; k++)
-            {
-                C[i * widthB + j] += A[i * widthA + k] * B[k * widthB + j];
-            }
-        }
-    }
-    auto t2 = std::chrono::high_resolution_clock::now();
-    auto dur = std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count();
-    std::string during2 = std::to_string(dur);
-    float *D = (float*) malloc(dataSizeC);
-    memcpy(D, C, dataSizeC);
-    memset(C, 0, dataSizeC);
+    memcpy(bufIn, ImgGray.data, dataSize);
 
 
+
+//
+//     for (int i = 0; i < heightC; ++i)
+//     {
+//         for (int j = 0; j < widthC; ++j)
+//         {
+//             out << C[i * widthC + j];
+//         }
+//         out << std::endl;
+//     }
+//
+//     return 0;
+    /*  clock_t start, end;*/
 
     //use the first platform
     cl_int ciErrNum;
@@ -186,37 +137,36 @@ Java_com_cloudream_myapplication_MainActivity_stringFromJNI(
     if (ciErrNum != CL_SUCCESS){
         printf("function clCreateCommandQueue goes wrong");
     }
+
     //declare the buffer and transimit it
-    t1 = std::chrono::high_resolution_clock::now();
-    cl_mem bufferA = clCreateBuffer(ctx, CL_MEM_READ_ONLY, dataSizeA, NULL, &ciErrNum);
+    auto t1 = std::chrono::high_resolution_clock::now();
+
+
+    cl_mem bufferIn = clCreateBuffer(ctx, CL_MEM_READ_ONLY, dataSize, NULL, &ciErrNum);
     if (ciErrNum == CL_SUCCESS){
         printf("buffer A created successfully!\n");
     }
+    ciErrNum = clEnqueueWriteBuffer(myqueue, bufferIn, CL_FALSE, 0, dataSize, (void *)bufIn, 0, NULL, NULL);
 
-
-    ciErrNum = clEnqueueWriteBuffer(myqueue, bufferA, CL_FALSE, 0, dataSizeA, (void *)A, 0, NULL, NULL);
-    t2 = std::chrono::high_resolution_clock::now();
-    dur = std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count();
-    std::string during = std::to_string(dur);
+    auto t2 = std::chrono::high_resolution_clock::now();
+    auto dur = std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count();
 
     if (ciErrNum == CL_SUCCESS){
         printf("bufferA has transformed successfully!\n");
     }
 
-    cl_mem bufferB = clCreateBuffer(ctx, CL_MEM_READ_ONLY, dataSizeB, NULL, &ciErrNum);
-    ciErrNum = clEnqueueWriteBuffer(myqueue, bufferB, CL_FALSE, 0, dataSizeB, (void *)B, 0, NULL, NULL);
+
+
+    cl_mem bufferOut = clCreateBuffer(ctx, CL_MEM_WRITE_ONLY, dataSize, NULL, &ciErrNum);
+    ciErrNum = clEnqueueWriteBuffer(myqueue, bufferOut, CL_FALSE, 0, dataSize, (void *)bufOut, 0, NULL, NULL);
     if (ciErrNum == CL_SUCCESS){
         printf("bufferB has transformed successfully!\n");
     }
 
-    cl_mem bufferC = clCreateBuffer(ctx, CL_MEM_WRITE_ONLY, dataSizeC, NULL, &ciErrNum);
 
-    if (ciErrNum == CL_SUCCESS){
-        printf("buffer C has created successfully!\n");
-    }
-    const char * src = programSource.c_str();
+    const char*srcKernel = programSource.c_str();
     //compile and build kernel
-    cl_program program = clCreateProgramWithSource(ctx, 1, (const char**)&src, NULL, &ciErrNum);
+    cl_program program = clCreateProgramWithSource(ctx, 1, (const char**)&srcKernel, NULL, &ciErrNum);
     if (ciErrNum == CL_SUCCESS){
         printf("create program successfully!\n");
     }
@@ -266,30 +216,31 @@ Java_com_cloudream_myapplication_MainActivity_stringFromJNI(
         printf("create kernel wrong\n");
     }
 
+
+
+    float cos_theta = cos(theta);
+    float sin_theta = sin(theta);
+
     //set the kernel arguments
-    ciErrNum = clSetKernelArg(mykernel, 0, sizeof(cl_mem), (void *)&bufferC);
-    ciErrNum |= clSetKernelArg(mykernel, 1, sizeof(cl_int), (void *)&widthA);
-    ciErrNum |= clSetKernelArg(mykernel, 2, sizeof(cl_int), (void *)&heightA);
-    ciErrNum |= clSetKernelArg(mykernel, 3, sizeof(cl_int), (void *)&widthB);
-    ciErrNum |= clSetKernelArg(mykernel, 4, sizeof(cl_int), (void *)&heightB);
-    ciErrNum |= clSetKernelArg(mykernel, 5, sizeof(cl_mem), (void *)&bufferA);
-    ciErrNum |= clSetKernelArg(mykernel, 6, sizeof(cl_mem), (void *)&bufferB);
+    ciErrNum = clSetKernelArg(mykernel, 0, sizeof(cl_mem), (void *)&bufferOut);
+    ciErrNum |= clSetKernelArg(mykernel, 1, sizeof(cl_mem), (void *)&bufferIn);
+    ciErrNum |= clSetKernelArg(mykernel, 2, sizeof(cl_int), (void *)&width);
+    ciErrNum |= clSetKernelArg(mykernel, 3, sizeof(cl_int), (void *)&height);
+    ciErrNum |= clSetKernelArg(mykernel, 4, sizeof(cl_int), (void *)&channel);
+    ciErrNum |= clSetKernelArg(mykernel, 5, sizeof(cl_float), (void *)&cos_theta);
+    ciErrNum |= clSetKernelArg(mykernel, 6, sizeof(cl_float), (void *)&sin_theta);
     printf("set kernel arguments successfully!\n");
     if (ciErrNum != CL_SUCCESS){
         printf("set kernel arguments wrong\n");
     }
 
     //size_t localws[2] = {16,16};
-    size_t globalws[2] = { widthC, heightC};
+    size_t globalws[2] = {static_cast<size_t >(width), static_cast<size_t>(height)};
 
     //execute the kernel
-    clock_t st, en;
-    st = clock();
+
     ciErrNum = clEnqueueNDRangeKernel(myqueue, mykernel, 2, NULL, globalws, NULL, 0, NULL, NULL);
     clFinish(myqueue);
-    t2 = std::chrono::high_resolution_clock::now();
-    en = clock();
-
 
 
 
@@ -300,44 +251,48 @@ Java_com_cloudream_myapplication_MainActivity_stringFromJNI(
     if (ciErrNum != CL_SUCCESS){
         printf("execute the kernel wrong\n");
     }
+
     //Read the output
+    ciErrNum = clEnqueueReadBuffer(myqueue, bufferOut, CL_TRUE, 0, dataSize, (void *)bufOut, 0, NULL, NULL);
 
 
-    ciErrNum = clEnqueueReadBuffer(myqueue, bufferC, CL_TRUE, 0, dataSizeC, (void *)C, 0, NULL, NULL);
 
+    cv::Mat test(ImgGray.rows, ImgGray.cols, ImgGray.type());
+/*    cv::Mat test(img.rows, img.cols, img.type());*/
 
-    std::string result = "true";
-    for(int i = 0; i < widthC * heightC; i++)
+    for (int iy = 0; iy < height; iy++)
     {
-        if(C[i] != D[i])
+        for (int ix = 0; ix < width; ix++)
         {
-            result = "false";
-            break;
+            int xpos = ((float)(ix - width / 2)) * cos_theta + ((float)(-iy + height / 2)) * sin_theta + width / 2;
+            int ypos = ((float)(ix - width / 2)) * sin_theta + ((float)(iy - height / 2)) * cos_theta + height / 2;
+
+            if ((xpos >= 0) && (xpos < width) && (ypos >= 0) && (ypos < height))
+            {
+                test.data[ypos * width + xpos] = ImgGray.data[iy * width + ix];
+//                 test.data[(((int)ypos) * width + (int)xpos) * channel] = img.data[(iy * width + ix) * channel];
+//                 test.data[(((int)ypos) * width + (int)xpos) * channel + 1] = img.data[(iy * width + ix) * channel + 1];
+//                 test.data[(((int)ypos) * width + (int)xpos) * channel + 2] = img.data[(iy * width + ix) * channel + 2];
+            }
+
         }
     }
-//    std::string ps;
-//    for (int i = 0; i < heightC; ++i)
-//    {
-//        for (int j = 0; j < widthC; ++j)
-//        {
-//            ps += std::to_string(C[i * widthC + j]);
-//        }
-////        out << std::endl;
-//    }
+
+
+    /*   cv::Mat detImg(img.rows, img.cols, img.type(), bufOut);*/
+    cv::Mat detImg(ImgGray.rows, ImgGray.cols, ImgGray.type(), bufOut);
+    cv::imwrite(path + "/OpenCL/detImg.png", detImg);
     clReleaseKernel(mykernel);
     clReleaseProgram(program);
     clReleaseCommandQueue(myqueue);
-    clReleaseMemObject(bufferA);
-    clReleaseMemObject(bufferB);
-    clReleaseMemObject(bufferC);
+    clReleaseMemObject(bufferIn);
+    clReleaseMemObject(bufferOut);
     clReleaseContext(ctx);
 
-    free(A);
-    free(B);
-    free(C);
-    free(platform);
-    free(device);
+    free(bufIn);
+    free(bufOut);
 
-//    std::string hello = "Hello from C++";
-    return env->NewStringUTF((during + "       " + during2 + result).c_str());
+//    std::string hello = ;
+//    return env->NewStringUTF((during + "       " + during2 + result).c_str());
+    return  env->NewStringUTF(std::to_string(dur).c_str());
 }
