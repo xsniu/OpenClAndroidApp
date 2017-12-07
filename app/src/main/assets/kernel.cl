@@ -1,20 +1,41 @@
+const sampler_t mysampler = CLK_ADDRESS_CLAMP_TO_EDGE | CLK_FILTER_NEAREST;
+
 __kernel void simpleMultiply(
-    __global uchar* dest_data,
-    __global uchar* src_data,
-    int width,
-    int height,
-    int channel,
-    float cosThreta,
-    float sinThreta)
+    __write_only image2d_t dest_data,
+    __read_only image2d_t src_data,
+    int cols,
+    int rows,
+   __constant float *filter,
+   int filterSize)
 {
-  const int ix = get_global_id(0);
-  const int iy = get_global_id(1);
+  int col = get_global_id(0);
+  int row = get_global_id(1);
+  int halfWidth = (int)(filterSize / 2);
 
-  int xpos = ((float)(ix - width / 2)) * cosThreta + ((float)(-iy + height / 2)) * sinThreta + width / 2;
-  int ypos = ((float)(ix - width / 2)) * sinThreta + ((float)(iy - height / 2)) * cosThreta + height / 2;
+  uint4 sum = {0, 0, 0, 0};
+  int filterIdx = 0;
 
-  if((xpos >= 0) && (xpos < width) && (ypos >= 0) && (ypos <= height))
+  int2 coords;
+
+  for (int i = -halfWidth; i <= halfWidth; i++)
   {
-    dest_data[ypos * width + xpos] = src_data[iy * width + ix];
+    coords.y = row + i;
+    for (int j = -halfWidth; i <= halfWidth; i++)
+    {
+      coords.x = col + j;
+      uint4 pixel;
+      pixel = read_imageui(src_data, mysampler, coords);
+      sum.x += ((float)pixel.x) * filter[filterIdx++];
+    }
+  }
+
+
+  //uint4 res;
+  //res.x = sum.x;
+  if ((row < rows) && (col < cols))
+  {
+    coords.x = col;
+    coords.y = row;
+    write_imageui(dest_data, coords, sum);
   }
 }

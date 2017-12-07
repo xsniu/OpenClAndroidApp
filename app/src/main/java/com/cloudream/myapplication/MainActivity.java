@@ -3,9 +3,12 @@ package com.cloudream.myapplication;
 import android.content.Context;
 import android.content.res.AssetManager;
 import android.content.res.Resources;
+import android.os.Environment;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 import android.widget.TextView;
+
+import java.io.File;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -24,7 +27,9 @@ public class MainActivity extends AppCompatActivity {
         // Example of a call to a native method
         TextView tv = (TextView) findViewById(R.id.sample_text);
         m_assetManager = getResources().getAssets();
-        OpenFile(m_assetManager);
+        File file = Environment.getExternalStorageDirectory();
+        String fileUrl = file.getAbsolutePath();
+        OpenFile(m_assetManager, fileUrl);
         tv.setText(stringFromJNI());
 
     }
@@ -34,5 +39,5 @@ public class MainActivity extends AppCompatActivity {
      * which is packaged with this application.
      */
     public native String stringFromJNI();
-    public native int OpenFile(AssetManager am);
+    public native int OpenFile(AssetManager am, String fileUrl);
 }
